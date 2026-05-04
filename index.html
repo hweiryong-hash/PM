@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Image Slider</title>
+  <style>
+    /* 기존 디자인 스타일 유지 */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: transparent; overflow-x: hidden; }
+    .slider-container { max-width: 1200px; margin: 0 auto 50px; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .slider-wrapper { position: relative; padding: 0 60px; }
+    .width-slider .main-image-container { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; margin-bottom: 20px; background: #eee; touch-action: pan-y; }
+    .length-slider .main-image-container { position: relative; width: 100%; max-width: 450px; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; margin: 0 auto 20px; background: #eee; touch-action: pan-y; }
+    .main-image { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; opacity: 0; transition: opacity 0.5s; }
+    .main-image.active { opacity: 1; }
+    .arrow-button { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.9); border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; z-index: 10; display: flex; align-items: center; justify-content: center; }
+    .arrow-button.prev { left: 0; }
+    .arrow-button.next { right: 0; }
+    .thumbnails-container { display: flex; gap: 10px; overflow-x: auto; padding: 10px 0; scrollbar-width: thin; }
+    .width-slider .thumbnail { width: 120px; height: 80px; object-fit: cover; cursor: pointer; border: 3px solid transparent; flex-shrink: 0; border-radius: 5px; }
+    .length-slider .thumbnail { width: 60px; height: 100px; object-fit: cover; cursor: pointer; border: 3px solid transparent; flex-shrink: 0; border-radius: 5px; }
+    .thumbnail.active { border-color: #007bff; }
+    
+    @media (max-width: 768px) {
+      .slider-wrapper { padding: 0 35px; }
+      .arrow-button { width: 30px; height: 30px; font-size: 16px; }
+      .width-slider .thumbnail { width: 90px; height: 60px; }
+      .length-slider .thumbnail { width: 50px; height: 83px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 가로 슬라이더 -->
+  <div class="slider-container width-slider">
+    <div class="slider-wrapper">
+      <button class="arrow-button prev" onclick="changeImage('width', -1)">‹</button>
+      <button class="arrow-button next" onclick="changeImage('width', 1)">›</button>
+      <div class="main-image-container" id="width-image-container"></div>
+    </div>
+    <div class="thumbnails-container" id="width-thumbnails"></div>
+  </div>
+
+  <!-- 세로 슬라이더 -->
+  <div class="slider-container length-slider">
+    <div class="slider-wrapper">
+      <button class="arrow-button prev" onclick="changeImage('length', -1)">‹</button>
+      <button class="arrow-button next" onclick="changeImage('length', 1)">›</button>
+      <div class="main-image-container" id="length-image-container"></div>
+    </div>
+    <div class="thumbnails-container" id="length-thumbnails"></div>
+  </div>
+
+  <script>
+    const sliders = {
+      width: { currentIndex: 0, images: [] },
+      length: { currentIndex: 0, images: [] }
+    };
+
+    // jpg와 png 확장자를 모두 확인하도록 수정된 함수
+    async function checkImages(type) {
+      let i = 1;
+      const foundImages = [];
+      const maxCheck = 100; // 최대 100장까지 확인
+      const extensions = ['jpg', 'png']; // 지원할 확장자 목록
+
+      while (i <= maxCheck) {
+        let imageFound = false;
+
+        // jpg를 먼저 찾고, 없으면 png를 찾습니다.
+        for (let ext of extensions) {
+          const imgUrl = `${type}/${i}.${ext}`;
+          try {
+            const exists = await isImageExisting(imgUrl);
+            if (exists) {
+              foundImages.push(imgUrl);
+              imageFound = true;
+              break; // 이미지를 찾았으면 다른 확장자는 건너뜁니다.
+            }
+          } catch (e) { break; }
+        }
+
+        if (imageFound) {
+          i++; // 이미지를 찾았으면 다음 번호(i+1)로 넘어갑니다.
+        } else {
+          break; // jpg도 png도 없으면 번호가 끊긴 것으로 간주하고 탐색을 멈춥니다.
+        }
+      }
+      return foundImages;
+    }
+
+    function isImageExisting(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url;
+      });
+    }
+
+    async function initSlider(type) {
+      const imageUrls = await checkImages(type);
+      if (imageUrls.length === 0) {
+        sendHeight(); // 이미지가 없어도 iframe 높이 조절을 위해 호출
+        return;
+      }
+
+      sliders[type].images = imageUrls;
+      const container = document.getElementById(`${type}-image-container`);
+      const thumbContainer = document.getElementById(`${type}-thumbnails`);
+
+      imageUrls.forEach((url, index) => {
+        // 메인 이미지 생성
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = `main-image ${index === 0 ? 'active' : ''}`;
+        container.appendChild(img);
+
+        // 썸네일 생성
+        const thumb = document.createElement('img');
+        thumb.src = url;
+        thumb.className = `thumbnail ${index === 0 ? 'active' : ''}`;
+        thumb.onclick = () => goToImage(type, index);
+        thumbContainer.appendChild(thumb);
+      });
+
+      setupTouchEvents(type, container);
+      sendHeight(); // 이미지 로드 완료 후 iframe 높이 갱신
+    }
+
+    function setupTouchEvents(type, container) {
+      let startX = 0;
+      let startY = 0;
+
+      container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+
+      container.addEventListener('touchend', (e) => {
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const diffX = startX - endX;
+        const diffY = startY - endY;
+
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+          if (diffX > 0) changeImage(type, 1);
+          else changeImage(type, -1);
+        }
+      }, { passive: true });
+    }
+
+    function changeImage(type, dir) {
+      const s = sliders[type];
+      if(s.images.length === 0) return;
+      s.currentIndex = (s.currentIndex + dir + s.images.length) % s.images.length;
+      updateDisplay(type);
+    }
+
+    function goToImage(type, index) {
+      sliders[type].currentIndex = index;
+      updateDisplay(type);
+    }
+
+    function updateDisplay(type) {
+      const idx = sliders[type].currentIndex;
+      document.querySelectorAll(`#${type}-image-container .main-image`).forEach((img, i) => {
+        img.classList.toggle('active', i === idx);
+      });
+      document.querySelectorAll(`#${type}-thumbnails .thumbnail`).forEach((img, i) => {
+        img.classList.toggle('active', i === idx);
+        if(i === idx) {
+           img.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+
+    function sendHeight() {
+      const height = document.body.scrollHeight;
+      window.parent.postMessage({ height: height }, '*');
+    }
+
+    // 초기화 실행
+    initSlider('width');
+    initSlider('length'); 
+
+    // 키보드 방향키 조작 추가 (가로 슬라이더 기준)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') changeImage('width', -1);
+      else if (e.key === 'ArrowRight') changeImage('width', 1);
+    });
+
+    window.addEventListener('resize', sendHeight);
+    window.addEventListener('load', sendHeight);
+  </script>
+</body>
+</html>
